@@ -19,6 +19,9 @@
 
 #include "uv_util.h"
 
+#include <unordered_map>
+#include <unordered_set>
+
 namespace p2pool {
 
 constexpr uint64_t HIGH_FEE_VALUE = 6000000000ULL;
@@ -60,7 +63,7 @@ public:
 
 private:
 	mutable uv_rwlock_t m_lock;
-	unordered_map<hash, TxMempoolData> m_transactions;
+	std::unordered_map<hash, TxMempoolData> m_transactions;
 };
 
 } // namespace p2pool

@@ -34,6 +34,9 @@
 #include "merge_mining_client.h"
 #include "sha256.h"
 
+#include <unordered_map>
+#include <unordered_set>
+
 #ifdef WITH_TLS
 #include <openssl/curve25519.h>
 #else
@@ -211,7 +214,7 @@ void P2PServer::add_cached_block(const PoolBlock& block)
 	}
 
 	if (!m_cachedBlocks) {
-		m_cachedBlocks = new unordered_map<hash, PoolBlock*>();
+		m_cachedBlocks = new std::unordered_map<hash, PoolBlock*>();
 	}
 
 	if (m_cachedBlocks->find(block.m_sidechainId) == m_cachedBlocks->end()) {
@@ -326,8 +329,8 @@ void P2PServer::update_peer_connections()
 	uint64_t total_outgoing_p2pool = 0;
 	uint64_t newer_version_p2pool = 0;
 
-	unordered_set<raw_ip> connected_clients;
-	unordered_set<std::string_view> connected_clients_domain;
+	std::unordered_set<raw_ip> connected_clients;
+	std::unordered_set<std::string_view> connected_clients_domain;
 
 	connected_clients.reserve(m_numConnections);
 
@@ -970,7 +973,7 @@ P2PServer::Broadcast::Broadcast(const PoolBlock& block, const PoolBlock* parent)
 
 	const size_t N = block.m_transactions.size();
 	if ((N > 1) && parent && (parent->m_transactions.size() > 1)) {
-		unordered_map<hash, size_t> parent_transactions;
+		std::unordered_map<hash, size_t> parent_transactions;
 		parent_transactions.reserve(parent->m_transactions.size());
 
 		for (size_t i = 1; i < parent->m_transactions.size(); ++i) {
@@ -1357,7 +1360,7 @@ void P2PServer::download_missing_blocks()
 		return;
 	}
 
-	unordered_set<hash> missing_blocks;
+	std::unordered_set<hash> missing_blocks;
 	m_pool->side_chain().get_missing_blocks(missing_blocks);
 
 	if (missing_blocks.empty()) {

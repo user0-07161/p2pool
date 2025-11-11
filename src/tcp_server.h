@@ -24,6 +24,8 @@
 #endif
 
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace p2pool {
 
@@ -216,11 +218,11 @@ protected:
 	std::atomic<uint32_t> m_numIncomingConnections;
 
 	uv_mutex_t m_bansLock;
-	unordered_map<raw_ip, std::chrono::steady_clock::time_point> m_bans;
+	std::unordered_map<raw_ip, std::chrono::steady_clock::time_point> m_bans;
 
 	[[nodiscard]] bool is_banned(bool is_v6, raw_ip ip);
 
-	unordered_set<raw_ip> m_pendingConnections;
+	std::unordered_set<raw_ip> m_pendingConnections;
 
 	uv_async_t m_dropConnectionsAsync;
 	static void on_drop_connections(uv_async_t* async) { reinterpret_cast<TCPServer*>(async->data)->close_sockets(false); }

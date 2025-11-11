@@ -20,6 +20,8 @@
 #include "keccak.h"
 #include "uv_util.h"
 
+#include <unordered_map>
+
 extern "C" {
 #include "crypto-ops.h"
 }
@@ -421,9 +423,9 @@ private:
 		uint32_t m_timestamp;
 	};
 
-	typedef unordered_map<std::array<uint8_t, HASH_SIZE * 2>, DerivationEntry> DerivationsMap;
-	typedef unordered_map<std::array<uint8_t, HASH_SIZE * 2 + sizeof(size_t)>, PublicKeyEntry> PublicKeysMap;
-	typedef unordered_map<std::array<uint8_t, HASH_SIZE * 2>, TxKeyEntry> TxKeysMap;
+	typedef std::unordered_map<std::array<uint8_t, HASH_SIZE * 2>, DerivationEntry> DerivationsMap;
+	typedef std::unordered_map<std::array<uint8_t, HASH_SIZE * 2 + sizeof(size_t)>, PublicKeyEntry> PublicKeysMap;
+	typedef std::unordered_map<std::array<uint8_t, HASH_SIZE * 2>, TxKeyEntry> TxKeysMap;
 
 	uv_rwlock_t derivations_lock;
 	DerivationsMap* derivations;

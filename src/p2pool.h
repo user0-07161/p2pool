@@ -20,7 +20,9 @@
 #include "uv_util.h"
 #include "params.h"
 #include "merge_mining_client.h"
+
 #include <map>
+#include <unordered_map>
 
 namespace p2pool {
 
@@ -172,7 +174,7 @@ private:
 
 	mutable uv_rwlock_t m_mainchainLock;
 	std::map<uint64_t, ChainMain> m_mainchainByHeight;
-	unordered_map<hash, ChainMain> m_mainchainByHash;
+	std::unordered_map<hash, ChainMain> m_mainchainByHash;
 
 	mutable uv_rwlock_t m_minerDataLock;
 	MinerData m_minerData;

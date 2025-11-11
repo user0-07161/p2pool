@@ -23,7 +23,7 @@ namespace p2pool {
 // Since data here can come from external and possibly malicious sources, check everything
 // Only the syntax (i.e. the serialized block binary format) and the keccak hash are checked here
 // Semantics must also be checked elsewhere before accepting the block (PoW, reward split between miners, difficulty calculation and so on)
-int PoolBlock::deserialize(const uint8_t* data, size_t size, const SideChain& sidechain, uv_loop_t* loop, bool compact)
+int PoolBlock::deserialize(const uint8_t* data, size_t size, SideChain& sidechain, uv_loop_t* loop, bool compact)
 {
 	try {
 		// Sanity check

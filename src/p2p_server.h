@@ -19,6 +19,10 @@
 
 #include "tcp_server.h"
 #include "pool_block.h"
+
+#include <unordered_map>
+#include <unordered_set>
+
 #include <deque>
 
 namespace p2pool {
@@ -237,7 +241,7 @@ private:
 	uint32_t m_maxIncomingPeers;
 
 	uv_rwlock_t m_cachedBlocksLock;
-	unordered_map<hash, PoolBlock*>* m_cachedBlocks;
+	std::unordered_map<hash, PoolBlock*>* m_cachedBlocks;
 
 private:
 	static void on_timer(uv_timer_t* timer) { reinterpret_cast<P2PServer*>(timer->data)->on_timer(); }
@@ -297,8 +301,8 @@ private:
 	std::vector<Broadcast*> m_broadcastQueue;
 
 	bool m_lookForMissingBlocks;
-	unordered_set<std::pair<uint64_t, uint64_t>> m_missingBlockRequests;
-	unordered_set<uint64_t> m_blockNotifyRequests;
+	std::unordered_set<std::pair<uint64_t, uint64_t>> m_missingBlockRequests;
+	std::unordered_set<uint64_t> m_blockNotifyRequests;
 
 	P2PClient* m_fastestPeer;
 	std::atomic<bool> m_newP2PoolVersionDetected;
@@ -327,12 +331,12 @@ private:
 		MONERO_BROADCAST_TIMEOUT = 3600 * 6,
 	};
 
-	unordered_set<std::pair<uint64_t, uint64_t>> m_auxJobMessages;
+	std::unordered_set<std::pair<uint64_t, uint64_t>> m_auxJobMessages;
 	std::vector<uint8_t> m_auxJobLastMessage;
 	uint64_t m_auxJobLastMessageTimestamp;
 
 	uv_mutex_t m_MoneroBlockBroadcastsLock;
-	unordered_map<uint64_t, uint64_t> m_MoneroBlockBroadcasts;
+	std::unordered_map<uint64_t, uint64_t> m_MoneroBlockBroadcasts;
 
 	void send_aux_job_donation(P2PServer::P2PClient* client, const uint8_t* data, uint32_t data_size);
 

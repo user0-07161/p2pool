@@ -19,7 +19,7 @@
 #include "uv_util.h"
 #include "json_rpc_request.h"
 #include <curl/curl.h>
-
+#include <stdexcept>
 LOG_CATEGORY(JSONRPCRequest)
 
 namespace p2pool {

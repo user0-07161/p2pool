@@ -19,6 +19,7 @@
 #include "p2pool.h"
 #include "side_chain.h"
 #include "pool_block.h"
+#include "util.h"
 #include "wallet.h"
 #include "block_template.h"
 #ifdef WITH_RANDOMX
@@ -43,6 +44,8 @@
 #include <fstream>
 #include <iterator>
 #include <numeric>
+#include <unordered_map>
+#include <unordered_set>
 
 LOG_CATEGORY(SideChain)
 
@@ -216,7 +219,7 @@ SideChain::SideChain(p2pool* pool, NetworkType type, const char* pool_name)
 		m_precalcWorkers.emplace_back(&SideChain::precalc_worker, this);
 	}
 
-	m_uniquePrecalcInputs = new unordered_set<size_t>();
+	m_uniquePrecalcInputs = new std::unordered_set<size_t>();
 	m_uniquePrecalcInputs->reserve(1 << 18);
 }
 
@@ -236,7 +239,7 @@ SideChain::~SideChain()
 	s_networkType = NetworkType::Invalid;
 }
 
-bool SideChain::fill_sidechain_data(PoolBlock& block, std::vector<MinerShare>& shares) const
+bool SideChain::fill_sidechain_data(PoolBlock& block, std::vector<MinerShare>& shares)
 {
 	block.m_uncles.clear();
 
@@ -353,7 +356,7 @@ P2PServer* SideChain::p2pServer() const
 	return m_pool ? m_pool->p2p_server() : nullptr;
 }
 
-bool SideChain::get_shares(const PoolBlock* tip, std::vector<MinerShare>& shares, uint64_t* bottom_height, bool quiet) const
+bool SideChain::get_shares(const PoolBlock* tip, std::vector<MinerShare>& shares, uint64_t* bottom_height, bool quiet)
 {
 	if (tip->m_txkeySecSeed.empty()) {
 		LOGERR(1, "tx key seed is not set, fix the code!");
@@ -385,7 +388,7 @@ bool SideChain::get_shares(const PoolBlock* tip, std::vector<MinerShare>& shares
 	const difficulty_type max_pplns_weight = mainchain_diff * 2;
 	difficulty_type pplns_weight;
 
-	unordered_set<MinerShare> shares_set;
+	std::unordered_set<MinerShare> shares_set;
 	shares_set.reserve(m_chainWindowSize * 2);
 
 	do {
@@ -407,8 +410,8 @@ bool SideChain::get_shares(const PoolBlock* tip, std::vector<MinerShare>& shares
 			}
 
 			// Take some % of uncle's weight into this share
-			const difficulty_type uncle_penalty = uncle->m_difficulty * m_unclePenalty / 100;
-			const difficulty_type uncle_weight = uncle->m_difficulty - uncle_penalty;
+			difficulty_type uncle_penalty = uncle->m_difficulty * m_unclePenalty / 100;
+			difficulty_type uncle_weight = uncle->m_difficulty - uncle_penalty;
 			const difficulty_type new_pplns_weight = pplns_weight + uncle_weight;
 
 			// Skip uncles that push PPLNS weight above the limit
@@ -814,7 +817,7 @@ const PoolBlock* SideChain::get_block_blob(const hash& id, std::vector<uint8_t>&
 	return block;
 }
 
-bool SideChain::get_outputs_blob(PoolBlock* block, uint64_t total_reward, std::vector<uint8_t>& blob, uv_loop_t* loop) const
+bool SideChain::get_outputs_blob(PoolBlock* block, uint64_t total_reward, std::vector<uint8_t>& blob, uv_loop_t* loop)
 {
 	blob.clear();
 
@@ -934,9 +937,9 @@ bool SideChain::get_outputs_blob(PoolBlock* block, uint64_t total_reward, std::v
 	return true;
 }
 
-void SideChain::print_status(bool obtain_sidechain_lock) const
+void SideChain::print_status(bool obtain_sidechain_lock)
 {
-	unordered_set<hash> blocks_in_window;
+	std::unordered_set<hash> blocks_in_window;
 	blocks_in_window.reserve(m_chainWindowSize * 9 / 8);
 
 	const difficulty_type diff = difficulty();
@@ -1199,7 +1202,7 @@ bool SideChain::is_nano() const
 	return (memcmp(m_consensusId.data(), nano_consensus_id, HASH_SIZE) == 0);
 }
 
-uint64_t SideChain::bottom_height(const PoolBlock* tip) const
+uint64_t SideChain::bottom_height(const PoolBlock* tip)
 {
 	if (!tip) {
 		return 0;
@@ -1970,7 +1973,7 @@ bool SideChain::is_longer_chain(const PoolBlock* block, const PoolBlock* candida
 	uint64_t candidate_mainchain_height = 0;
 	uint64_t candidate_mainchain_min_height = 0;
 
-	unordered_set<hash> current_chain_monero_blocks, candidate_chain_monero_blocks;
+	std::unordered_set<hash> current_chain_monero_blocks, candidate_chain_monero_blocks;
 	{
 		const uint64_t k = m_chainWindowSize * m_targetBlockTime * 2 / MONERO_BLOCK_TIME;
 		current_chain_monero_blocks.reserve(k);
@@ -2279,7 +2282,7 @@ void SideChain::prune_old_blocks()
 	}
 }
 
-void SideChain::get_missing_blocks(unordered_set<hash>& missing_blocks) const
+void SideChain::get_missing_blocks(std::unordered_set<hash>& missing_blocks) const
 {
 	missing_blocks.clear();
 
@@ -2473,11 +2476,15 @@ void SideChain::precalc_worker()
 			ReadLock lock2(*PoolBlock::s_precalculatedSharesLock);
 
 			const size_t n = job->m_precalculatedShares.size();
-
 			for (size_t i = 0; i < n; ++i) {
+				uint64_t hashed = 0xcbf29ce484222325ull;
+				for (size_t i = 0; i < array_size(t); ++i) {
+					hashed = (hashed ^ t[i]) * 0x100000001b3ull;
+				}
+
 				memcpy(t + HASH_SIZE, job->m_precalculatedShares[i].m_wallet->view_public_key().h, HASH_SIZE);
 				memcpy(t + HASH_SIZE * 2, &i, sizeof(i));
-				if (m_uniquePrecalcInputs->insert(robin_hood::hash_bytes(t, array_size(t))).second) {
+				if (m_uniquePrecalcInputs->insert(hashed).second) {
 					wallets.emplace_back(i, job->m_precalculatedShares[i].m_wallet);
 				}
 			}

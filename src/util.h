@@ -26,7 +26,8 @@
 #define ROBIN_HOOD_CALLOC(count, size) p2pool::calloc_hook((count), (size))
 #define ROBIN_HOOD_FREE(ptr) p2pool::free_hook(ptr)
 
-#include "robin_hood.h"
+#include <unordered_map>
+#include <unordered_set>
 
 #ifdef _MSC_VER
 #pragma warning(pop)
@@ -38,194 +39,226 @@ namespace p2pool {
 #define P2POOL_VERSION_MINOR 12
 #define P2POOL_VERSION_PATCH 0
 
-constexpr uint32_t P2POOL_VERSION = (P2POOL_VERSION_MAJOR << 16) | (P2POOL_VERSION_MINOR << 8) | P2POOL_VERSION_PATCH;
+constexpr uint32_t P2POOL_VERSION = (P2POOL_VERSION_MAJOR << 16) |
+                                    (P2POOL_VERSION_MINOR << 8) |
+                                    P2POOL_VERSION_PATCH;
 
-extern const char* VERSION;
+extern const char *VERSION;
 
 extern const uint8_t ED25519_MASTER_PUBLIC_KEY[32];
 
 extern std::string DATA_DIR;
 
 enum class SoftwareID : uint32_t {
-	P2Pool = 0,
-	GoObserver = 0x624F6F47UL,
-	Unknown = 0xFFFFFFFFUL,
+  P2Pool = 0,
+  GoObserver = 0x624F6F47UL,
+  Unknown = 0xFFFFFFFFUL,
 };
 
 SoftwareID get_software_id(uint32_t value);
 
-template<typename T> struct not_implemented { enum { value = 0 }; };
-
-struct nocopy_nomove
-{
-	nocopy_nomove() = default;
-	nocopy_nomove(const nocopy_nomove&) = delete;
-	nocopy_nomove(nocopy_nomove&&) = delete;
-	nocopy_nomove& operator=(const nocopy_nomove&) = delete;
-	nocopy_nomove& operator=(nocopy_nomove&&) = delete;
+template <typename T> struct not_implemented {
+  enum { value = 0 };
 };
 
-template<typename T>
-struct ScopeGuard : public nocopy_nomove
-{
-	explicit FORCEINLINE ScopeGuard(T&& handler) : m_handler(std::move(handler)) {}
-
-	FORCEINLINE ~ScopeGuard()
-	{
-		// Because the handler can throw an exception, and we don't want exceptions in a destructor
-		try {
-			m_handler();
-		}
-		catch(...) {
-		}
-	}
-
-	T m_handler;
+struct nocopy_nomove {
+  nocopy_nomove() = default;
+  nocopy_nomove(const nocopy_nomove &) = delete;
+  nocopy_nomove(nocopy_nomove &&) = delete;
+  nocopy_nomove &operator=(const nocopy_nomove &) = delete;
+  nocopy_nomove &operator=(nocopy_nomove &&) = delete;
 };
 
-#define ON_SCOPE_LEAVE(...) auto CONCAT(scope_guard_, __LINE__) = ScopeGuard{ __VA_ARGS__ };
+template <typename T> struct ScopeGuard : public nocopy_nomove {
+  explicit FORCEINLINE ScopeGuard(T &&handler)
+      : m_handler(std::move(handler)) {}
 
-struct MinerCallbackHandler
-{
-	virtual ~MinerCallbackHandler() = 0;
+  FORCEINLINE ~ScopeGuard() {
+    // Because the handler can throw an exception, and we don't want exceptions
+    // in a destructor
+    try {
+      m_handler();
+    } catch (...) {
+    }
+  }
 
-	virtual void handle_tx(TxMempoolData& tx) = 0;
-	virtual void handle_miner_data(MinerData& data) = 0;
-	virtual void handle_chain_main(ChainMain& data, const char* extra, const std::vector<hash>& tx_hashes_in_block) = 0;
-	virtual void handle_monero_block_broadcast(std::vector<std::vector<uint8_t>>&& blobs) = 0;
+  T m_handler;
 };
 
-template<typename T>
-static FORCEINLINE bool from_hex(char c, T& out_value) {
-	if ('0' <= c && c <= '9') { out_value = static_cast<T>(c - '0'); return true; }
-	if ('a' <= c && c <= 'f') { out_value = static_cast<T>((c - 'a') + 10); return true; }
-	if ('A' <= c && c <= 'F') { out_value = static_cast<T>((c - 'A') + 10); return true; }
-	return false;
+#define ON_SCOPE_LEAVE(...)                                                    \
+  auto CONCAT(scope_guard_, __LINE__) = ScopeGuard{__VA_ARGS__};
+
+struct MinerCallbackHandler {
+  virtual ~MinerCallbackHandler() = 0;
+
+  virtual void handle_tx(TxMempoolData &tx) = 0;
+  virtual void handle_miner_data(MinerData &data) = 0;
+  virtual void
+  handle_chain_main(ChainMain &data, const char *extra,
+                    const std::vector<hash> &tx_hashes_in_block) = 0;
+  virtual void
+  handle_monero_block_broadcast(std::vector<std::vector<uint8_t>> &&blobs) = 0;
+};
+
+template <typename T> static FORCEINLINE bool from_hex(char c, T &out_value) {
+  if ('0' <= c && c <= '9') {
+    out_value = static_cast<T>(c - '0');
+    return true;
+  }
+  if ('a' <= c && c <= 'f') {
+    out_value = static_cast<T>((c - 'a') + 10);
+    return true;
+  }
+  if ('A' <= c && c <= 'F') {
+    out_value = static_cast<T>((c - 'A') + 10);
+    return true;
+  }
+  return false;
 }
 
-static FORCEINLINE bool from_hex(const char* s, size_t len, hash& h) {
-	if (len != HASH_SIZE * 2) {
-		return false;
-	}
+static FORCEINLINE bool from_hex(const char *s, size_t len, hash &h) {
+  if (len != HASH_SIZE * 2) {
+    return false;
+  }
 
-	hash result;
+  hash result;
 
-	for (uint32_t i = 0; i < HASH_SIZE; ++i) {
-		uint8_t d[2];
-		if (!from_hex(s[i * 2], d[0]) || !from_hex(s[i * 2 + 1], d[1])) {
-			return false;
-		}
-		result.h[i] = (d[0] << 4) | d[1];
-	}
+  for (uint32_t i = 0; i < HASH_SIZE; ++i) {
+    uint8_t d[2];
+    if (!from_hex(s[i * 2], d[0]) || !from_hex(s[i * 2 + 1], d[1])) {
+      return false;
+    }
+    result.h[i] = (d[0] << 4) | d[1];
+  }
 
-	h = result;
-	return true;
+  h = result;
+  return true;
 }
 
-static FORCEINLINE bool from_hex(const char* s, size_t len, std::vector<uint8_t>& data) {
-	if (len % 2) {
-		return false;
-	}
+static FORCEINLINE bool from_hex(const char *s, size_t len,
+                                 std::vector<uint8_t> &data) {
+  if (len % 2) {
+    return false;
+  }
 
-	len /= 2;
-	std::vector<uint8_t> result(len);
+  len /= 2;
+  std::vector<uint8_t> result(len);
 
-	for (uint32_t i = 0; i < len; ++i) {
-		uint8_t d[2];
-		if (!from_hex(s[i * 2], d[0]) || !from_hex(s[i * 2 + 1], d[1])) {
-			return false;
-		}
-		result[i] = (d[0] << 4) | d[1];
-	}
+  for (uint32_t i = 0; i < len; ++i) {
+    uint8_t d[2];
+    if (!from_hex(s[i * 2], d[0]) || !from_hex(s[i * 2 + 1], d[1])) {
+      return false;
+    }
+    result[i] = (d[0] << 4) | d[1];
+  }
 
-	data = std::move(result);
-	return true;
+  data = std::move(result);
+  return true;
 }
 
-template<typename T, bool is_signed> struct is_negative_helper {};
-template<typename T> struct is_negative_helper<T, false> { static FORCEINLINE bool value(T) { return false; } };
-template<typename T> struct is_negative_helper<T, true>  { static FORCEINLINE bool value(T x) { return (x < 0); } };
+template <typename T, bool is_signed> struct is_negative_helper {};
+template <typename T> struct is_negative_helper<T, false> {
+  static FORCEINLINE bool value(T) { return false; }
+};
+template <typename T> struct is_negative_helper<T, true> {
+  static FORCEINLINE bool value(T x) { return (x < 0); }
+};
 
-template<typename T> FORCEINLINE bool is_negative(T x) { return is_negative_helper<T, std::is_signed<T>::value>::value(x); }
-
-template<typename T, bool is_signed> struct abs_helper {};
-template<typename T> struct abs_helper<T, false> { static FORCEINLINE T value(T x) { return x; } };
-template<typename T> struct abs_helper<T, true>  { static FORCEINLINE std::make_unsigned_t<T> value(T x) { return (x < 0) ? -x : x; } };
-
-template<typename T> FORCEINLINE std::make_unsigned_t<T> abs(T x) { return abs_helper<T, std::is_signed<T>::value>::value(x); }
-
-template<typename T, typename U>
-FORCEINLINE void writeVarint(T value, U&& callback)
-{
-	while (value >= 0x80) {
-		callback(static_cast<uint8_t>((value & 0x7F) | 0x80));
-		value >>= 7;
-	}
-	callback(static_cast<uint8_t>(value));
+template <typename T> FORCEINLINE bool is_negative(T x) {
+  return is_negative_helper<T, std::is_signed<T>::value>::value(x);
 }
 
-template<typename T>
-FORCEINLINE void writeVarint(T value, std::vector<uint8_t>& out)
-{
-	writeVarint(value, [&out](uint8_t b) { out.emplace_back(b); });
+template <typename T, bool is_signed> struct abs_helper {};
+template <typename T> struct abs_helper<T, false> {
+  static FORCEINLINE T value(T x) { return x; }
+};
+template <typename T> struct abs_helper<T, true> {
+  static FORCEINLINE std::make_unsigned_t<T> value(T x) {
+    return (x < 0) ? -x : x;
+  }
+};
+
+template <typename T> FORCEINLINE std::make_unsigned_t<T> abs(T x) {
+  return abs_helper<T, std::is_signed<T>::value>::value(x);
 }
 
-template<typename T> static FORCEINLINE bool out_of_range(uint64_t value) { return value > std::numeric_limits<T>::max(); }
-template<> FORCEINLINE bool out_of_range<uint64_t>(uint64_t) { return false; }
-
-template<typename T>
-const uint8_t* readVarint(const uint8_t* data, const uint8_t* data_end, T& b)
-{
-	static_assert(std::is_unsigned_v<T>, "readVarint works only with unsigned types");
-
-	uint64_t result = 0;
-	int k = 0;
-
-	while (data < data_end) {
-		if (k >= static_cast<int>(sizeof(T)) * 8) {
-			return nullptr;
-		}
-
-		const uint64_t cur_byte = *(data++);
-
-		if (k && (cur_byte == 0)) {
-			return nullptr;
-		}
-
-		result |= (cur_byte & 0x7F) << k;
-
-		if ((k > 0) && (shiftleft128(cur_byte & 0x7F, 0, k) != 0)) {
-			return nullptr;
-		}
-
-		k += 7;
-
-		if ((cur_byte & 0x80) == 0) {
-			if (out_of_range<T>(result)) {
-				return nullptr;
-			}
-			b = static_cast<T>(result);
-			return data;
-		}
-	}
-
-	return nullptr;
+template <typename T, typename U>
+FORCEINLINE void writeVarint(T value, U &&callback) {
+  while (value >= 0x80) {
+    callback(static_cast<uint8_t>((value & 0x7F) | 0x80));
+    value >>= 7;
+  }
+  callback(static_cast<uint8_t>(value));
 }
 
-template<typename T>
-FORCEINLINE T read_unaligned(const T* p)
-{
-	static_assert(std::is_trivially_copyable<T>::value, "T must be a trivially copyable type");
-
-	T result;
-	memcpy(&result, p, sizeof(T));
-	return result;
+template <typename T>
+FORCEINLINE void writeVarint(T value, std::vector<uint8_t> &out) {
+  writeVarint(value, [&out](uint8_t b) { out.emplace_back(b); });
 }
 
-template<typename T, size_t N> FORCEINLINE constexpr size_t array_size(T(&)[N]) { return N; }
-template<typename T, typename U, size_t N> FORCEINLINE constexpr size_t array_size(T(U::*)[N]) { return N; }
+template <typename T> static FORCEINLINE bool out_of_range(uint64_t value) {
+  return value > std::numeric_limits<T>::max();
+}
+template <> FORCEINLINE bool out_of_range<uint64_t>(uint64_t) { return false; }
 
-[[noreturn]] void panic_stop(const char* message);
+template <typename T>
+const uint8_t *readVarint(const uint8_t *data, const uint8_t *data_end, T &b) {
+  static_assert(std::is_unsigned_v<T>,
+                "readVarint works only with unsigned types");
+
+  uint64_t result = 0;
+  int k = 0;
+
+  while (data < data_end) {
+    if (k >= static_cast<int>(sizeof(T)) * 8) {
+      return nullptr;
+    }
+
+    const uint64_t cur_byte = *(data++);
+
+    if (k && (cur_byte == 0)) {
+      return nullptr;
+    }
+
+    result |= (cur_byte & 0x7F) << k;
+
+    if ((k > 0) && (shiftleft128(cur_byte & 0x7F, 0, k) != 0)) {
+      return nullptr;
+    }
+
+    k += 7;
+
+    if ((cur_byte & 0x80) == 0) {
+      if (out_of_range<T>(result)) {
+        return nullptr;
+      }
+      b = static_cast<T>(result);
+      return data;
+    }
+  }
+
+  return nullptr;
+}
+
+template <typename T> FORCEINLINE T read_unaligned(const T *p) {
+  static_assert(std::is_trivially_copyable<T>::value,
+                "T must be a trivially copyable type");
+
+  T result;
+  memcpy(&result, p, sizeof(T));
+  return result;
+}
+
+template <typename T, size_t N>
+FORCEINLINE constexpr size_t array_size(T (&)[N]) {
+  return N;
+}
+template <typename T, typename U, size_t N>
+FORCEINLINE constexpr size_t array_size(T (U::*)[N]) {
+  return N;
+}
+
+[[noreturn]] void panic_stop(const char *message);
 
 #define STR(X) #X
 #define STR2(X) STR(X)
@@ -234,79 +267,89 @@ template<typename T, typename U, size_t N> FORCEINLINE constexpr size_t array_si
 
 void make_thread_background();
 
-class BackgroundJobTracker : public nocopy_nomove
-{
+class BackgroundJobTracker : public nocopy_nomove {
 public:
-	BackgroundJobTracker();
-	~BackgroundJobTracker();
+  BackgroundJobTracker();
+  ~BackgroundJobTracker();
 
-	template<size_t N> FORCEINLINE void start(const char (&name)[N]) { start_internal(name); }
-	template<size_t N> FORCEINLINE void stop (const char (&name)[N]) { stop_internal (name); }
+  template <size_t N> FORCEINLINE void start(const char (&name)[N]) {
+    start_internal(name);
+  }
+  template <size_t N> FORCEINLINE void stop(const char (&name)[N]) {
+    stop_internal(name);
+  }
 
-	std::vector<std::pair<const char*, int32_t>> get_jobs();
-	void print_status();
+  std::vector<std::pair<const char *, int32_t>> get_jobs();
+  void print_status();
 
 private:
-	void start_internal(const char* name);
-	void stop_internal(const char* name);
+  void start_internal(const char *name);
+  void stop_internal(const char *name);
 
-	struct Impl;
-	Impl* m_impl;
+  struct Impl;
+  Impl *m_impl;
 };
 
-extern BackgroundJobTracker* bkg_jobs_tracker;
+extern BackgroundJobTracker *bkg_jobs_tracker;
 
-#define BACKGROUND_JOB_START(x) do { bkg_jobs_tracker->start(#x); } while (0)
-#define BACKGROUND_JOB_STOP(x)  do { bkg_jobs_tracker->stop(#x);  } while (0)
+#define BACKGROUND_JOB_START(x)                                                \
+  do {                                                                         \
+    bkg_jobs_tracker->start(#x);                                               \
+  } while (0)
+#define BACKGROUND_JOB_STOP(x)                                                 \
+  do {                                                                         \
+    bkg_jobs_tracker->stop(#x);                                                \
+  } while (0)
 
 void set_main_thread();
 bool is_main_thread();
 
 extern bool disable_resolve_host;
-bool resolve_host(std::string& host, bool& is_v6);
+bool resolve_host(std::string &host, bool &is_v6);
 
+/*
 template <typename Key, typename T>
-using unordered_map = robin_hood::detail::Table<false, 80, Key, T, robin_hood::hash<Key>, std::equal_to<Key>>;
+using unordered_map = robin_hood::detail::Table<false, 80, Key, T,
+robin_hood::hash<Key>, std::equal_to<Key>>;
 
 template <typename Key>
-using unordered_set = robin_hood::detail::Table<false, 80, Key, void, robin_hood::hash<Key>, std::equal_to<Key>>;
+using unordered_set = robin_hood::detail::Table<false, 80, Key, void,
+robin_hood::hash<Key>, std::equal_to<Key>>;
+*/
 
-// Fills the whole initial MT19937-64 state with non-deterministic random numbers
-struct RandomDeviceSeed
-{
-	using result_type = std::random_device::result_type;
-	static_assert(sizeof(result_type) >= 4, "result_type must have at least 32 bits");
+// Fills the whole initial MT19937-64 state with non-deterministic random
+// numbers
+struct RandomDeviceSeed {
+  using result_type = std::random_device::result_type;
+  static_assert(sizeof(result_type) >= 4,
+                "result_type must have at least 32 bits");
 
-	template<typename T>
-	static void generate(T begin, T end)
-	{
-		std::random_device rd;
-		for (T i = begin; i != end; ++i) {
-			*i = rd();
-		}
-	}
+  template <typename T> static void generate(T begin, T end) {
+    std::random_device rd;
+    for (T i = begin; i != end; ++i) {
+      *i = rd();
+    }
+  }
 
-	static RandomDeviceSeed instance;
+  static RandomDeviceSeed instance;
 };
 
-FORCEINLINE uint64_t xorshift64star(uint64_t x)
-{
-	x ^= x >> 12;
-	x ^= x << 25;
-	x ^= x >> 27;
-	return x * 0x2545F4914F6CDD1DULL;
+FORCEINLINE uint64_t xorshift64star(uint64_t x) {
+  x ^= x >> 12;
+  x ^= x << 25;
+  x ^= x >> 27;
+  return x * 0x2545F4914F6CDD1DULL;
 }
 
-FORCEINLINE uint64_t seconds_since_epoch()
-{
-	using namespace std::chrono;
-	return duration_cast<seconds>(steady_clock::now().time_since_epoch()).count();
+FORCEINLINE uint64_t seconds_since_epoch() {
+  using namespace std::chrono;
+  return duration_cast<seconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-FORCEINLINE uint64_t microseconds_since_epoch()
-{
-	using namespace std::chrono;
-	return duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
+FORCEINLINE uint64_t microseconds_since_epoch() {
+  using namespace std::chrono;
+  return duration_cast<microseconds>(steady_clock::now().time_since_epoch())
+      .count();
 }
 
 uint64_t bsr_reference(uint64_t x);
@@ -315,18 +358,17 @@ uint64_t bsr_reference(uint64_t x);
 #define bsr(x) (63 - __builtin_clzll(x))
 #elif defined HAVE_BITSCANREVERSE64
 #pragma intrinsic(_BitScanReverse64)
-FORCEINLINE uint64_t bsr(uint64_t x)
-{
-	unsigned long index;
-	_BitScanReverse64(&index, x);
-	return index;
+FORCEINLINE uint64_t bsr(uint64_t x) {
+  unsigned long index;
+  _BitScanReverse64(&index, x);
+  return index;
 }
 #else
 #define bsr bsr_reference
 #endif
 
-bool str_to_ip(bool is_v6, const char* ip, raw_ip& result);
-bool is_localhost(const std::string& host);
+bool str_to_ip(bool is_v6, const char *ip, raw_ip &result);
+bool is_localhost(const std::string &host);
 
 #ifdef WITH_UPNP
 void init_upnp();
@@ -335,47 +377,50 @@ int add_portmapping(int external_port, int internal_port);
 void remove_portmapping(int external_port);
 #endif
 
-struct PerfTimer
-{
-	FORCEINLINE PerfTimer(int level, const char* name) : m_level(level), m_name(name), m_start(std::chrono::high_resolution_clock::now()) {}
-	~PerfTimer();
+struct PerfTimer {
+  FORCEINLINE PerfTimer(int level, const char *name)
+      : m_level(level), m_name(name),
+        m_start(std::chrono::high_resolution_clock::now()) {}
+  ~PerfTimer();
 
-	int m_level;
-	const char* m_name;
-	std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
+  int m_level;
+  const char *m_name;
+  std::chrono::time_point<std::chrono::high_resolution_clock> m_start;
 };
 
 #ifdef P2POOL_LOG_DISABLE
 #define PERFLOG(level, name)
 #else
-#define PERFLOG(level, name) PerfTimer CONCAT(perf_timer_, __LINE__)(level, name)
+#define PERFLOG(level, name)                                                   \
+  PerfTimer CONCAT(perf_timer_, __LINE__)(level, name)
 #endif
 
-template<typename R, typename ...Args>
-struct Callback
-{
-	struct Base
-	{
-		virtual ~Base() {}
-		virtual R operator()(Args...) const = 0;
-	};
+template <typename R, typename... Args> struct Callback {
+  struct Base {
+    virtual ~Base() {}
+    virtual R operator()(Args...) const = 0;
+  };
 
-	template<typename T>
-	struct Derived : public Base
-	{
-		explicit FORCEINLINE Derived(T&& cb) : m_cb(std::move(cb)) {}
-		R operator()(Args... args) const override { return m_cb(args...); }
+  template <typename T> struct Derived : public Base {
+    explicit FORCEINLINE Derived(T &&cb) : m_cb(std::move(cb)) {}
+    R operator()(Args... args) const override { return m_cb(args...); }
 
-	private:
-		Derived& operator=(Derived&&) = delete;
-		T m_cb;
-	};
+  private:
+    Derived &operator=(Derived &&) = delete;
+    T m_cb;
+  };
 };
 
-bool get_dns_txt_records_base(const std::string& host, const Callback<void, const char*, size_t>::Base& callback);
+bool get_dns_txt_records_base(
+    const std::string &host,
+    const Callback<void, const char *, size_t>::Base &callback);
 
-template<typename T>
-FORCEINLINE bool get_dns_txt_records(const std::string& host, T&& callback) { return get_dns_txt_records_base(host, Callback<void, const char*, size_t>::Derived<T>(std::move(callback))); }
+template <typename T>
+FORCEINLINE bool get_dns_txt_records(const std::string &host, T &&callback) {
+  return get_dns_txt_records_base(
+      host,
+      Callback<void, const char *, size_t>::Derived<T>(std::move(callback)));
+}
 
 #ifdef DEV_TRACK_MEMORY
 void show_top_10_allocations();
@@ -384,63 +429,59 @@ void minidump_and_crash(size_t delay);
 
 std::string p2pool_version();
 
-void fixup_path(std::string& path);
+void fixup_path(std::string &path);
 
-void secure_zero_memory(volatile void* data, size_t size);
+void secure_zero_memory(volatile void *data, size_t size);
 
-template<typename T>
-FORCEINLINE void secure_zero_memory(T& value)
-{
-	static_assert(!std::is_pointer_v<T>, "Trying to zero a pointer instead of data it points to");
-	static_assert(std::is_trivially_copyable_v<T>, "Trying to zero a complex data type");
+template <typename T> FORCEINLINE void secure_zero_memory(T &value) {
+  static_assert(!std::is_pointer_v<T>,
+                "Trying to zero a pointer instead of data it points to");
+  static_assert(std::is_trivially_copyable_v<T>,
+                "Trying to zero a complex data type");
 
-	secure_zero_memory(&value, sizeof(T));
+  secure_zero_memory(&value, sizeof(T));
 }
 
-std::string to_onion_v3(const hash& pubkey);
-hash from_onion_v3(const std::string& address);
+std::string to_onion_v3(const hash &pubkey);
+hash from_onion_v3(const std::string &address);
 
-static FORCEINLINE constexpr hash from_onion_v3_const(const char* address)
-{
-	uint8_t buf[HASH_SIZE + 4] = {};
-	uint8_t* p = buf;
+static FORCEINLINE constexpr hash from_onion_v3_const(const char *address) {
+  uint8_t buf[HASH_SIZE + 4] = {};
+  uint8_t *p = buf;
 
-	uint64_t data = 0;
-	uint64_t bit_size = 0;
+  uint64_t data = 0;
+  uint64_t bit_size = 0;
 
-	for (size_t i = 0; i < 56; ++i) {
-		const char c = address[i];
-		uint64_t digit = 0;
+  for (size_t i = 0; i < 56; ++i) {
+    const char c = address[i];
+    uint64_t digit = 0;
 
-		if ('a' <= c && c <= 'z') {
-			digit = static_cast<uint64_t>(c - 'a');
-		}
-		else if ('A' <= c && c <= 'Z') {
-			digit = static_cast<uint64_t>(c - 'A');
-		}
-		else if ('2' <= c && c <= '7') {
-			digit = static_cast<uint64_t>(c - '2') + 26;
-		}
-		else {
-			return {};
-		}
+    if ('a' <= c && c <= 'z') {
+      digit = static_cast<uint64_t>(c - 'a');
+    } else if ('A' <= c && c <= 'Z') {
+      digit = static_cast<uint64_t>(c - 'A');
+    } else if ('2' <= c && c <= '7') {
+      digit = static_cast<uint64_t>(c - '2') + 26;
+    } else {
+      return {};
+    }
 
-		data = (data << 5) | digit;
-		bit_size += 5;
+    data = (data << 5) | digit;
+    bit_size += 5;
 
-		while (bit_size >= 8) {
-			bit_size -= 8;
-			*(p++) = static_cast<uint8_t>(data >> bit_size);
-		}
-	}
+    while (bit_size >= 8) {
+      bit_size -= 8;
+      *(p++) = static_cast<uint8_t>(data >> bit_size);
+    }
+  }
 
-	hash result;
+  hash result;
 
-	for (size_t i = 0; i < HASH_SIZE; ++i) {
-		result.h[i] = buf[i];
-	}
+  for (size_t i = 0; i < HASH_SIZE; ++i) {
+    result.h[i] = buf[i];
+  }
 
-	return result;
+  return result;
 }
 
 } // namespace p2pool
@@ -450,52 +491,61 @@ bool memory_tracking_stop();
 void p2pool_usage();
 int p2pool_test();
 
-namespace robin_hood {
+namespace std {
 
-template<>
-struct hash<p2pool::hash>
-{
-	FORCEINLINE size_t operator()(const p2pool::hash& value) const noexcept
-	{
-		return hash_bytes(value.h, p2pool::HASH_SIZE);
-	}
+template <> struct hash<p2pool::hash> {
+  FORCEINLINE size_t operator()(const p2pool::hash &value) const noexcept {
+    uint64_t result = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < p2pool::HASH_SIZE; ++i) {
+            result = (result ^ value.h[i]) * 0x100000001b3ull;
+    }
+    return static_cast<size_t>(result);
+  }
 };
 
-template<>
-struct hash<p2pool::root_hash>
-{
-	FORCEINLINE size_t operator()(const p2pool::root_hash& value) const noexcept
-	{
-		return hash_bytes(value.h, p2pool::HASH_SIZE);
-	}
+template <> struct hash<p2pool::root_hash> {
+  FORCEINLINE size_t operator()(const p2pool::root_hash &value) const noexcept {
+    uint64_t result = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < p2pool::HASH_SIZE; ++i) {
+            result = (result ^ value.h[i]) * 0x100000001b3ull;
+    }
+    return static_cast<size_t>(result);
+  }
 };
 
-template<size_t N>
-struct hash<std::array<uint8_t, N>>
-{
-	FORCEINLINE size_t operator()(const std::array<uint8_t, N>& value) const noexcept
-	{
-		return hash_bytes(value.data(), N);
-	}
+template <size_t N> struct hash<std::array<uint8_t, N>> {
+  FORCEINLINE size_t
+  operator()(const std::array<uint8_t, N> &value) const noexcept {
+    uint64_t result = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < N; ++i) {
+            result = (result ^ value.data()[i]) * 0x100000001b3ull;
+    }
+    return static_cast<size_t>(result);
+  }
 };
 
-template<>
-struct hash<p2pool::raw_ip>
-{
-	FORCEINLINE size_t operator()(const p2pool::raw_ip& value) const noexcept
-	{
-		return hash_bytes(value.data, sizeof(value.data));
-	}
+template <> struct hash<p2pool::raw_ip> {
+  FORCEINLINE size_t operator()(const p2pool::raw_ip &value) const noexcept {
+    uint64_t result = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < sizeof(value.data); ++i) {
+            result = (result ^ value.data[i]) * 0x100000001b3ull;
+    }
+    return static_cast<size_t>(result);
+  }
 };
 
-template<>
-struct hash<std::pair<uint64_t, uint64_t>>
-{
-	FORCEINLINE size_t operator()(const std::pair<uint64_t, uint64_t>& value) const noexcept
-	{
-		static_assert(sizeof(value) == sizeof(uint64_t) * 2, "Invalid std::pair<uint64_t, uint64_t> size");
-		return hash_bytes(&value, sizeof(value));
-	}
+template <> struct hash<std::pair<uint64_t, uint64_t>> {
+  FORCEINLINE size_t
+  operator()(const std::pair<uint64_t, uint64_t> &value) const noexcept {
+    static_assert(sizeof(value) == sizeof(uint64_t) * 2,
+                  "Invalid std::pair<uint64_t, uint64_t> size");
+    uint64_t result = 0xcbf29ce484222325ull;
+    for (size_t i = 0; i < sizeof(value); ++i) {
+            result = (result ^ value.first) * 0x100000001b3ull;
+            result = (result ^ value.second) * 0x100000001b3ull;
+    }
+    return static_cast<size_t>(result);
+  }
 };
 
-} // namespace robin_hood
+} // namespace std

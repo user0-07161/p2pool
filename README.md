@@ -1,3 +1,8 @@
+# P2Pool patched to run on armv7
+This removes a dep on robin_hood_hashing as it segfaults on armv7.
+Note that these patches are unofficial and slow, do not report issues with this on the upstream P2Pool repo!
+Also note that this is a hack, it's unstable and unorganized. Please do not expect efficient mining or clean commit history with/on this!
+
 # Monero P2Pool
 
 Decentralized pool for Monero mining.

@@ -203,7 +203,7 @@ static void do_help(p2pool * /* m_pool */, const char * /* args */)
 
 static void do_status(p2pool *m_pool, const char * /* args */)
 {
-	const SideChain& c = m_pool->side_chain();
+	SideChain& c = m_pool->side_chain();
 
 	c.print_status();
 

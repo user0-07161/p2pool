@@ -19,6 +19,8 @@
 
 #include "uv_util.h"
 
+#include <unordered_map>
+
 namespace p2pool {
 
 class p2pool_api
@@ -68,7 +70,7 @@ private:
 	std::string m_localPath;
 
 	uv_mutex_t m_dumpDataLock;
-	unordered_map<std::string, std::pair<std::vector<char>, bool>> m_dumpData;
+	std::unordered_map<std::string, std::pair<std::vector<char>, bool>> m_dumpData;
 
 	uv_async_t m_dumpToFileAsync;
 
