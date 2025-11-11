@@ -147,12 +147,12 @@ FORCEINLINE uint64_t umul128(uint64_t a, uint64_t b, uint64_t* hi)
 
 FORCEINLINE uint64_t udiv128(uint64_t hi, uint64_t lo, uint64_t divisor, uint64_t* remainder)
 {
-	const uint128_t n = ((uint128_t)(hi) << 64) + lo;
+        const uint128_t n = ((uint128_t)(hi) << 64) + lo;
 
-	const uint64_t result = static_cast<uint64_t>(n) / divisor;
-	*remainder = static_cast<uint64_t>(n) % divisor;
+        const uint64_t result = static_cast<uint64_t>(n / (uint128_t)(divisor));
+        *remainder = static_cast<uint64_t>(n % (uint128_t)(divisor));
 
-	return result;
+        return result;
 }
 
 FORCEINLINE uint64_t shiftleft128(uint64_t lo, uint64_t hi, uint64_t shift) { return (hi << shift) | (lo >> (64 - shift)); }
