@@ -3,6 +3,35 @@ This removes a dep on robin_hood_hashing as it segfaults on armv7.
 Note that these patches are unofficial and slow, do not report issues with this on the upstream P2Pool repo!
 Also note that this is a hack, it's unstable and unorganized. Please do not expect efficient mining or clean commit history with/on this!
 
+This is more of a repo for myself, do not expect any support and don't tell me how chaotic this is.
+
+When compiling on armv7, make sure to disable sse2 in the grpc submod:
+```
+if(UNIX)
+  if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    set(_gRPC_PLATFORM_LINUX ON)
+    if(NOT CMAKE_CROSSCOMPILING AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+      # message("+++ Enabling SSE2 for ${CMAKE_SYSTEM_PROCESSOR}")
+      # set(_gRPC_C_CXX_FLAGS "${_gRPC_C_CXX_FLAGS} -msse2")
+    endif()
+  elseif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    set(_gRPC_PLATFORM_MAC ON)
+  elseif(${CMAKE_SYSTEM_NAME} MATCHES "iOS")
+    set(_gRPC_PLATFORM_IOS ON)
+  elseif(${CMAKE_SYSTEM_NAME} MATCHES "Android")
+    set(_gRPC_PLATFORM_ANDROID ON)
+  else()
+    set(_gRPC_PLATFORM_POSIX ON)
+  endif()
+endif()
+if(WIN32)
+  set(_gRPC_PLATFORM_WINDOWS ON)
+endif()
+```
+
+Or just don't compile grpc at all (if you don't need to merge mine with Tari):
+`cmake -DWITH_GRPC=OFF ..`
+
 # Monero P2Pool
 
 Decentralized pool for Monero mining.
