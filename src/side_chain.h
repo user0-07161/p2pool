@@ -36,7 +36,7 @@ struct MinerShare
 
 	FORCEINLINE bool operator==(const MinerShare& s) const { return *m_wallet == *s.m_wallet; }
 
-	mutable difficulty_type m_weight;
+	mutable difficulty_type m_weight{};
 	const Wallet* m_wallet;
 };
 

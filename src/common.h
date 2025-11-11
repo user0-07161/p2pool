@@ -89,6 +89,9 @@
 
 #endif
 
+#include <boost/multiprecision/cpp_int.hpp>
+using uint128_t = boost::multiprecision::uint128_t;
+
 #ifndef __has_feature
   #define __has_feature(x) 0
 #endif
@@ -137,17 +140,17 @@ FORCEINLINE uint64_t shiftright128(uint64_t lo, uint64_t hi, uint64_t shift) { r
 #else
 FORCEINLINE uint64_t umul128(uint64_t a, uint64_t b, uint64_t* hi)
 {
-	const unsigned __int128 r = static_cast<unsigned __int128>(a) * static_cast<unsigned __int128>(b);
-	*hi = r >> 64;
+	const uint128_t r = (uint128_t)(a) * (uint128_t)(b);
+	*hi = static_cast<uint64_t>(r >> 64);
 	return static_cast<uint64_t>(r);
 }
 
 FORCEINLINE uint64_t udiv128(uint64_t hi, uint64_t lo, uint64_t divisor, uint64_t* remainder)
 {
-	const unsigned __int128 n = (static_cast<unsigned __int128>(hi) << 64) + lo;
+	const uint128_t n = ((uint128_t)(hi) << 64) + lo;
 
-	const uint64_t result = n / divisor;
-	*remainder = n % divisor;
+	const uint64_t result = static_cast<uint64_t>(n) / divisor;
+	*remainder = static_cast<uint64_t>(n) % divisor;
 
 	return result;
 }
@@ -243,8 +246,8 @@ static_assert(std::is_standard_layout<root_hash>::value, "struct root_hash is no
 
 struct
 #ifdef __GNUC__
-	alignas(unsigned __int128)
-#endif
+	alignas(uint128_t)
+#endif 
 	difficulty_type
 {
 	FORCEINLINE          constexpr difficulty_type() noexcept : lo(0), hi(0) {}
@@ -258,8 +261,6 @@ struct
 	{
 #ifdef _MSC_VER
 		_addcarry_u64(_addcarry_u64(0, lo, b.lo, &lo), hi, b.hi, &hi);
-#elif defined(__GNUC__) && !defined(DEV_CLANG_TIDY)
-		*reinterpret_cast<unsigned __int128*>(this) += *reinterpret_cast<const unsigned __int128*>(&b);
 #else
 		const uint64_t t = lo;
 		lo += b.lo;
@@ -275,8 +276,6 @@ struct
 	{
 #ifdef _MSC_VER
 		_subborrow_u64(_subborrow_u64(0, lo, b.lo, &lo), hi, b.hi, &hi);
-#elif defined(__GNUC__) && !defined(DEV_CLANG_TIDY)
-		*reinterpret_cast<unsigned __int128*>(this) -= *reinterpret_cast<const unsigned __int128*>(&b);
 #else
 		const uint64_t t = b.lo;
 		const uint64_t carry = (lo < t) ? 1 : 0;
